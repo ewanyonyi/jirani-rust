@@ -39,6 +39,26 @@ By default Rocket listens on `0.0.0.0:8080`, which matches the Android emulator 
 http://10.0.2.2:8080
 ```
 
+Local development is open by default. To test the same token-protected behavior
+used by staging or production, run the gateway with `JIRANI_GATEWAY_TOKEN`:
+
+```bash
+JIRANI_GATEWAY_TOKEN=change-this-demo-token \
+  cargo run
+```
+
+Then build Android with the matching client-side token name:
+
+```bash
+cd /home/ewanyonyi/dev/jirani
+./gradlew assembleDebug \
+  -PJIRANI_REMOTE_GATEWAY_URL=http://10.0.2.2:8080 \
+  -PJIRANI_REMOTE_GATEWAY_TOKEN=change-this-demo-token
+```
+
+The names are intentionally different: Rust reads `JIRANI_GATEWAY_TOKEN`;
+Android is built with `JIRANI_REMOTE_GATEWAY_TOKEN`. The values must match.
+
 ### Local JSON-File Mode
 
 Use JSON files when you want durable demo storage without running PostgreSQL.
@@ -170,27 +190,41 @@ Example `/etc/jirani-rust/gateway.env`:
 ```bash
 JIRANI_DATABASE_URL=postgres://jirani_gateway:replace-with-a-long-db-password@localhost:5432/jirani_gateway
 JIRANI_GATEWAY_TOKEN=replace-with-a-long-random-token
+JIRANI_RELAY_PUBLIC_KEY=base64-der-rsa-public-key
 ROCKET_ADDRESS=127.0.0.1
 ROCKET_PORT=8080
 ```
 
-Optional relay encryption key publication:
+`JIRANI_GATEWAY_TOKEN` is a runtime server secret. It is not baked in by
+`cargo build --release`; systemd loads it from this environment file each time
+the service starts. Generate a strong token with:
 
 ```bash
-JIRANI_RELAY_PUBLIC_KEY=base64-or-pem-public-key
+openssl rand -base64 48
 ```
+
+`JIRANI_RELAY_PUBLIC_KEY` must be a valid RSA public key, either PEM text or
+base64 DER. Do not set it to a random shared secret. Generate a relay key pair
+with:
+
+```bash
+sudo openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+  -out /etc/jirani-rust/relay-private.pem
+
+sudo openssl rsa -in /etc/jirani-rust/relay-private.pem \
+  -pubout -outform DER | base64 -w0
+```
+
+Paste the printed base64 public key into `JIRANI_RELAY_PUBLIC_KEY`. Keep
+`relay-private.pem` private and readable only by trusted server operators.
+Android uses `/relay/public-key` to encrypt relay payloads for the configured
+gateway key when this value is valid.
 
 Lock down the environment file:
 
 ```bash
 sudo chown jirani:jirani /etc/jirani-rust/gateway.env
 sudo chmod 0640 /etc/jirani-rust/gateway.env
-```
-
-Generate a strong demo token with:
-
-```bash
-openssl rand -base64 48
 ```
 
 ### 5. Create A systemd Service
@@ -326,6 +360,13 @@ curl -H "Authorization: Bearer replace-with-a-long-random-token" \
   https://gateway.example.org/privacy
 ```
 
+Relay public-key check:
+
+```bash
+curl -H "Authorization: Bearer replace-with-a-long-random-token" \
+  https://gateway.example.org/relay/public-key
+```
+
 Dashboard pages can be opened for browser testing with:
 
 ```text
@@ -334,12 +375,35 @@ https://gateway.example.org/reports?token=replace-with-a-long-random-token
 https://gateway.example.org/analysis?token=replace-with-a-long-random-token
 ```
 
+### 9. Build Android For The Hosted Gateway
+
+After the Rust service is running with `JIRANI_GATEWAY_TOKEN`, build Android
+with the same token under Android's Gradle property name:
+
+```bash
+cd /home/ewanyonyi/dev/jirani
+./gradlew assembleDebug \
+  -PJIRANI_REMOTE_GATEWAY_URL=https://gateway.example.org \
+  -PJIRANI_REMOTE_GATEWAY_TOKEN=replace-with-a-long-random-token
+```
+
+For the staging host used by this project, replace the URL with:
+
+```text
+https://snf-6731.vlab.ac.ke
+```
+
+If you rotate `JIRANI_GATEWAY_TOKEN` on the server, rebuild and redeploy Android
+with the new matching `JIRANI_REMOTE_GATEWAY_TOKEN`.
+
 ### Production Safety Checklist
 
 Before exposing the gateway:
 
 - point Android builds at `https://gateway.example.org`, not plain HTTP;
 - set `JIRANI_GATEWAY_TOKEN` and keep it out of source control;
+- build Android with the same value as `JIRANI_REMOTE_GATEWAY_TOKEN`;
+- set `JIRANI_RELAY_PUBLIC_KEY` to a valid RSA public key, not a random secret;
 - use a managed, backed-up, or monitored PostgreSQL database;
 - disable or anonymize reverse-proxy access logs;
 - rotate demo/test tokens after presentations;
@@ -373,13 +437,17 @@ relying on this as production infrastructure.
 
 ## Dashboard And Auth
 
-For local demos, the gateway is open by default. For a hosted test server, set a shared token:
+For local demos, the gateway is open by default. For a hosted test server, set a shared token at runtime:
 
 ```bash
 JIRANI_GATEWAY_TOKEN=change-this-demo-token \
 JIRANI_DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/jirani_gateway \
 cargo run
 ```
+
+For release builds, `cargo build --release` only compiles the binary. Set
+`JIRANI_GATEWAY_TOKEN` in the shell, process manager, container secret, or
+systemd `EnvironmentFile` that starts `./target/release/jirani-rust`.
 
 When `JIRANI_GATEWAY_TOKEN` is set:
 
