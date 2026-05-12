@@ -50,7 +50,9 @@ Use HTTPS for hosted testing. Android rejects non-HTTPS remote gateway URLs by d
 
 ## Authentication
 
-Local demos can run without auth. Hosted test servers should set:
+Local sync/API demos can run without bearer-token auth. Dashboard pages require
+username/password login after `JIRANI_DASHBOARD_USERS` is configured. Hosted
+test servers should set:
 
 ```bash
 JIRANI_GATEWAY_TOKEN=change-this-demo-token \

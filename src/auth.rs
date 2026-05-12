@@ -169,10 +169,6 @@ impl GatewayConfig {
     }
 
     fn accepts_dashboard_session(&self, session: Option<&str>, now_epoch_seconds: i64) -> bool {
-        if !self.dashboard_auth_enabled() {
-            return true;
-        }
-
         let Some(session) = session else {
             return false;
         };

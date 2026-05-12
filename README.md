@@ -437,8 +437,10 @@ relying on this as production infrastructure.
 
 ## Dashboard And Auth
 
-For local demos, the gateway is open by default. For hosted test servers, keep
-the Android/API token separate from human dashboard access:
+For local sync/API demos, the gateway API is open by default. The browser
+dashboard requires username/password login once `JIRANI_DASHBOARD_USERS` is
+configured. For hosted test servers, keep the Android/API token separate from
+human dashboard access:
 
 ```bash
 JIRANI_GATEWAY_TOKEN=change-this-demo-token \

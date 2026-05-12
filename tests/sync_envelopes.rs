@@ -83,18 +83,17 @@ fn mismatched_content_hash_is_rejected() {
 }
 
 #[test]
-fn dashboard_pages_render_in_open_demo_mode() {
+fn dashboard_shows_login_until_dashboard_user_signs_in() {
     let client = open_client();
 
     let response = client.get("/").dispatch();
     assert_eq!(response.status(), Status::Ok);
     let body = response.into_string().expect("dashboard body");
-    assert!(body.contains("Review minimized report signals"));
+    assert!(body.contains("Sign in to the Jirani dashboard"));
+    assert!(body.contains("login-card"));
 
     let response = client.get("/analysis").dispatch();
-    assert_eq!(response.status(), Status::Ok);
-    let body = response.into_string().expect("analysis body");
-    assert!(body.contains("Anonymous analysis"));
+    assert_eq!(response.status(), Status::Unauthorized);
 }
 
 #[test]
@@ -144,7 +143,7 @@ fn dashboard_username_password_auth_protects_report_pages() {
     assert!(response
         .into_string()
         .expect("dashboard login body")
-        .contains("Jirani dashboard access"));
+        .contains("Sign in to the Jirani dashboard"));
     assert_eq!(
         client.get("/reports").dispatch().status(),
         Status::Unauthorized
@@ -155,7 +154,7 @@ fn dashboard_username_password_auth_protects_report_pages() {
     assert!(response
         .into_string()
         .expect("login body")
-        .contains("Jirani dashboard access"));
+        .contains("Sign in to the Jirani dashboard"));
 
     let response = client
         .post("/login")

@@ -222,12 +222,8 @@ async fn dashboard(
 }
 
 #[get("/login")]
-fn login(config: &State<GatewayConfig>) -> Result<RawHtml<String>, Redirect> {
-    if !config.dashboard_auth_enabled() {
-        return Err(Redirect::to("/"));
-    }
-
-    Ok(RawHtml(login_page(None)))
+fn login() -> RawHtml<String> {
+    RawHtml(login_page(None))
 }
 
 #[post("/login", data = "<form>")]
@@ -237,7 +233,9 @@ fn login_submit(
     config: &State<GatewayConfig>,
 ) -> Result<Redirect, RawHtml<String>> {
     if !config.dashboard_auth_enabled() {
-        return Ok(Redirect::to("/"));
+        return Err(RawHtml(login_page(Some(
+            "Dashboard users are not configured yet. Set JIRANI_DASHBOARD_USERS before signing in.",
+        ))));
     }
 
     let form = form.into_inner();
@@ -268,27 +266,39 @@ fn login_page(error: Option<&str>) -> String {
         .map(|message| format!(r#"<p class="error">{}</p>"#, escape_html(message)))
         .unwrap_or_default();
 
-    page(
+    login_shell(
         "Jirani Login",
         &format!(
             r#"
-        <section class="hero">
-          <div>
-            <h1>Jirani dashboard access</h1>
-            <p>Authorized OSF staff and community elders can review minimized report signals here without asking reporters for names, accounts, phone numbers, or device identity.</p>
+        <section class="login-card" aria-labelledby="login-title">
+          <div class="login-copy">
+            <a class="brand login-brand" href="/" aria-label="Jirani home">
+              <span class="brand-mark">J</span>
+              <strong>Jirani</strong>
+            </a>
+            <div>
+              <p class="login-kicker">Protected review workspace</p>
+              <h1 id="login-title">Sign in to the Jirani dashboard</h1>
+              <p>Access is limited to authorized OSF staff and community elders reviewing minimized, anonymous report signals.</p>
+            </div>
+            <div class="login-note">
+              <strong>Privacy boundary</strong>
+              <p>The dashboard does not ask for reporter names, phone numbers, device identity, or precise locations.</p>
+            </div>
           </div>
-          <form class="status-card" method="post" action="/login">
-            <label for="username">Username</label>
-            <input id="username" name="username" type="text" autocomplete="username" placeholder="Authorized user">
-            <label for="password">Password</label>
-            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Password">
+          <form class="login-form" method="post" action="/login">
+            <div>
+              <h2>Dashboard access</h2>
+              <p>Use the credentials issued for your review role.</p>
+            </div>
             {}
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" autocomplete="username" placeholder="elder_osf">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password">
             <button type="submit">Open Dashboard</button>
+            <p class="form-footnote">For hosted deployments, use HTTPS and rotate credentials after demos.</p>
           </form>
-        </section>
-        <section class="panel">
-          <h2>Privacy note</h2>
-          <p class="note">Jirani stores minimized envelopes only. Direct HTTPS still exposes source IP at the network layer, so hosted deployments should disable or anonymize proxy access logs.</p>
         </section>
         "#,
             error,
@@ -610,6 +620,27 @@ fn page(title: &str, body: &str) -> String {
     )
 }
 
+fn login_shell(title: &str, body: &str) -> String {
+    format!(
+        r#"<!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'">
+          <title>{}</title>
+          <style>{}</style>
+        </head>
+        <body class="login-body">
+          <main class="login-main">{}</main>
+        </body>
+        </html>"#,
+        escape_html(title),
+        css(),
+        body
+    )
+}
+
 fn css() -> &'static str {
     r#"
     :root {
@@ -737,6 +768,129 @@ fn css() -> &'static str {
     }
     .profile strong { display: block; font-size: 14px; }
     .profile p { margin: 2px 0 0; color: #7a857f; font-size: 12px; }
+    .login-body {
+      display: grid;
+      min-height: 100vh;
+      padding: 32px;
+      place-items: center;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(255, 255, 255, .95) 0, rgba(255, 255, 255, 0) 30%),
+        linear-gradient(135deg, #f3f5f2 0%, #dfe6e1 52%, #cfdad3 100%);
+    }
+    .login-main {
+      width: min(100%, 980px);
+      padding: 0;
+    }
+    .login-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      min-height: 620px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, .82);
+      border-radius: 24px;
+      background: #ffffff;
+      box-shadow: 0 30px 80px rgba(21, 35, 28, .18);
+    }
+    .login-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 32px;
+      padding: 44px;
+      background:
+        linear-gradient(160deg, rgba(8, 122, 82, .95), rgba(5, 48, 35, .98)),
+        #073a2a;
+      color: #ffffff;
+    }
+    .login-brand { color: #ffffff; padding: 0; }
+    .login-brand .brand-mark { background: #ffffff; color: #087a52; }
+    .login-kicker {
+      margin: 0 0 12px;
+      color: #bfe1d3;
+      font-size: 12px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+    .login-copy h1 {
+      margin: 0;
+      max-width: 520px;
+      font-size: 42px;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+    .login-copy p {
+      max-width: 540px;
+      color: #d7ebe3;
+      line-height: 1.65;
+    }
+    .login-note {
+      max-width: 460px;
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, .2);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .08);
+    }
+    .login-note p { margin: 8px 0 0; font-size: 13px; }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 44px;
+      background: #ffffff;
+    }
+    .login-form h2 {
+      margin: 0 0 6px;
+      font-size: 24px;
+    }
+    .login-form p {
+      margin: 0 0 24px;
+      color: #6e7a73;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .login-form label {
+      margin: 14px 0 8px;
+      color: #2d3832;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .login-form input {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid #c7d0ca;
+      border-radius: 10px;
+      padding: 0 13px;
+      background: #fbfcfb;
+      color: #111a15;
+      font: inherit;
+    }
+    .login-form input:focus {
+      outline: 3px solid rgba(8, 122, 82, .18);
+      border-color: #087a52;
+      background: #ffffff;
+    }
+    .login-form button {
+      min-height: 50px;
+      margin-top: 22px;
+      border: 0;
+      border-radius: 10px;
+      background: #087a52;
+      color: #ffffff;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+      box-shadow: 0 14px 26px rgba(8, 122, 82, .22);
+    }
+    .login-form button:hover { background: #066342; }
+    .login-form .error {
+      margin: 0 0 10px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: #fff1f1;
+      color: #8b1e1e;
+      font-size: 13px;
+    }
+    .form-footnote { margin: 16px 0 0 !important; font-size: 12px !important; }
     main {
       width: 100%;
       padding: 12px 28px 28px;
@@ -1001,6 +1155,11 @@ fn css() -> &'static str {
     }
     @media (max-width: 720px) {
       body { padding: 0; background: #f8faf8; }
+      .login-body { padding: 16px; background: #e8eee9; }
+      .login-card { grid-template-columns: 1fr; min-height: 0; }
+      .login-copy { padding: 28px; }
+      .login-copy h1 { font-size: 32px; }
+      .login-form { padding: 28px; }
       .app-frame { min-height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
       .topbar { align-items: stretch; flex-direction: column; padding: 16px 18px 8px; }
       .search { width: 100%; }
