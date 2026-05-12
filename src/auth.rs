@@ -5,6 +5,7 @@ use std::env;
 #[derive(Debug, Clone, Default)]
 pub struct GatewayConfig {
     access_token: Option<String>,
+    relay_public_key: Option<String>,
 }
 
 impl GatewayConfig {
@@ -14,19 +15,33 @@ impl GatewayConfig {
                 .ok()
                 .map(|token| token.trim().to_string())
                 .filter(|token| !token.is_empty()),
+            relay_public_key: env::var("JIRANI_RELAY_PUBLIC_KEY")
+                .ok()
+                .map(|key| key.trim().to_string())
+                .filter(|key| !key.is_empty()),
         }
     }
 
     #[allow(dead_code)]
     pub fn open() -> Self {
-        Self { access_token: None }
+        Self {
+            access_token: None,
+            relay_public_key: None,
+        }
     }
 
     #[allow(dead_code)]
     pub fn with_token(token: impl Into<String>) -> Self {
         Self {
             access_token: Some(token.into()),
+            relay_public_key: None,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn with_relay_public_key(mut self, public_key: impl Into<String>) -> Self {
+        self.relay_public_key = Some(public_key.into());
+        self
     }
 
     pub fn auth_enabled(&self) -> bool {
@@ -38,6 +53,10 @@ impl GatewayConfig {
             return true;
         };
         token.is_some_and(|token| token == expected)
+    }
+
+    pub fn relay_public_key(&self) -> Option<&str> {
+        self.relay_public_key.as_deref()
     }
 
     fn accepts(&self, request: &Request<'_>) -> bool {

@@ -1,8 +1,9 @@
 use crate::auth::{token_link_suffix, GatewayAuth, GatewayConfig};
 use crate::models::{
-    AnonymousSummary, ApiMessage, EnvelopeList, HealthResponse, PrivacyResponse, SyncEnvelope,
+    AnonymousSummary, ApiMessage, EnvelopeList, HealthResponse, PrivacyResponse, RelayBundle,
+    RelayBundleList, RelayPublicKeyResponse, SyncEnvelope,
 };
-use crate::store::{EnvelopeStore, StoreWrite};
+use crate::store::{EnvelopeStore, RelayBundleStore, StoreWrite};
 use rocket::http::Status;
 use rocket::response::content::RawHtml;
 use rocket::serde::json::Json;
@@ -56,6 +57,54 @@ fn list_envelopes(_auth: GatewayAuth, store: &State<EnvelopeStore>) -> Json<Enve
 #[get("/analytics/anonymous-summary")]
 fn anonymous_summary(_auth: GatewayAuth, store: &State<EnvelopeStore>) -> Json<AnonymousSummary> {
     Json(store.summary())
+}
+
+#[post("/relay/bundles", format = "json", data = "<bundle>")]
+fn upload_relay_bundle(
+    _auth: GatewayAuth,
+    store: &State<RelayBundleStore>,
+    bundle: Json<RelayBundle>,
+) -> Result<Status, (Status, Json<ApiMessage>)> {
+    let bundle = bundle.into_inner();
+    bundle
+        .validate_for_gateway(now_epoch_seconds())
+        .map_err(|message| (Status::BadRequest, Json(ApiMessage { message })))?;
+
+    match store.upsert(bundle) {
+        StoreWrite::Created => Ok(Status::Created),
+        StoreWrite::AlreadyStored => Ok(Status::Conflict),
+        StoreWrite::PersistFailed(message) => Err((
+            Status::InternalServerError,
+            Json(ApiMessage {
+                message: format!("Relay bundle accepted but could not be persisted: {message}"),
+            }),
+        )),
+    }
+}
+
+#[get("/relay/bundles")]
+fn list_relay_bundles(
+    _auth: GatewayAuth,
+    store: &State<RelayBundleStore>,
+) -> Json<RelayBundleList> {
+    Json(RelayBundleList {
+        bundles: store.list(),
+    })
+}
+
+#[get("/relay/public-key")]
+fn relay_public_key(
+    _auth: GatewayAuth,
+    config: &State<GatewayConfig>,
+) -> Result<Json<RelayPublicKeyResponse>, Status> {
+    config
+        .relay_public_key()
+        .map(|public_key| {
+            Json(RelayPublicKeyResponse {
+                public_key: public_key.to_string(),
+            })
+        })
+        .ok_or(Status::NotFound)
 }
 
 #[get("/?<token>")]
@@ -258,7 +307,10 @@ pub fn routes() -> Vec<Route> {
         analysis,
         upload_envelope,
         list_envelopes,
-        anonymous_summary
+        anonymous_summary,
+        upload_relay_bundle,
+        list_relay_bundles,
+        relay_public_key
     ]
 }
 

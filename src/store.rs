@@ -1,4 +1,4 @@
-use crate::models::{AnonymousSummary, AreaSummary, SummaryCount, SyncEnvelope};
+use crate::models::{AnonymousSummary, AreaSummary, RelayBundle, SummaryCount, SyncEnvelope};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::env;
@@ -10,6 +10,12 @@ use std::sync::Mutex;
 #[derive(Default)]
 pub struct EnvelopeStore {
     envelopes: Mutex<HashMap<String, SyncEnvelope>>,
+    storage_path: Option<PathBuf>,
+}
+
+#[derive(Default)]
+pub struct RelayBundleStore {
+    bundles: Mutex<HashMap<String, RelayBundle>>,
     storage_path: Option<PathBuf>,
 }
 
@@ -88,6 +94,61 @@ impl EnvelopeStore {
     }
 }
 
+impl RelayBundleStore {
+    pub fn from_env() -> Self {
+        env::var("JIRANI_RELAY_STORE_PATH")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(PathBuf::from)
+            .map(Self::from_path)
+            .unwrap_or_default()
+    }
+
+    pub fn from_path(path: PathBuf) -> Self {
+        let bundles = load_relay_bundles(&path).unwrap_or_default();
+        Self {
+            bundles: Mutex::new(bundles),
+            storage_path: Some(path),
+        }
+    }
+
+    pub fn upsert(&self, bundle: RelayBundle) -> StoreWrite {
+        let mut bundles = self
+            .bundles
+            .lock()
+            .expect("relay bundle store lock poisoned");
+        if bundles.contains_key(&bundle.bundle_id) {
+            return StoreWrite::AlreadyStored;
+        }
+        let bundle_id = bundle.bundle_id.clone();
+        bundles.insert(bundle_id.clone(), bundle);
+
+        if let Some(path) = &self.storage_path {
+            if let Err(error) = persist_relay_bundles(path, &bundles) {
+                bundles.remove(&bundle_id);
+                return StoreWrite::PersistFailed(error.to_string());
+            }
+        }
+
+        StoreWrite::Created
+    }
+
+    pub fn list(&self) -> Vec<RelayBundle> {
+        let bundles = self
+            .bundles
+            .lock()
+            .expect("relay bundle store lock poisoned");
+        let mut values = bundles.values().cloned().collect::<Vec<_>>();
+        values.sort_by(|left, right| {
+            right
+                .expires_at_epoch_seconds
+                .cmp(&left.expires_at_epoch_seconds)
+                .then_with(|| left.bundle_id.cmp(&right.bundle_id))
+        });
+        values
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreWrite {
     Created,
@@ -113,6 +174,32 @@ fn persist_envelopes(path: &Path, envelopes: &HashMap<String, SyncEnvelope>) -> 
     }
     let mut values = envelopes.values().cloned().collect::<Vec<_>>();
     values.sort_by(|left, right| left.envelope_id.cmp(&right.envelope_id));
+    let body = serde_json::to_string_pretty(&values)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let tmp_path = path.with_extension("tmp");
+    fs::write(&tmp_path, body)?;
+    fs::rename(tmp_path, path)?;
+    Ok(())
+}
+
+fn load_relay_bundles(path: &Path) -> io::Result<HashMap<String, RelayBundle>> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+    let body = fs::read_to_string(path)?;
+    let bundles: Vec<RelayBundle> = serde_json::from_str(&body).unwrap_or_default();
+    Ok(bundles
+        .into_iter()
+        .map(|bundle| (bundle.bundle_id.clone(), bundle))
+        .collect())
+}
+
+fn persist_relay_bundles(path: &Path, bundles: &HashMap<String, RelayBundle>) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut values = bundles.values().cloned().collect::<Vec<_>>();
+    values.sort_by(|left, right| left.bundle_id.cmp(&right.bundle_id));
     let body = serde_json::to_string_pretty(&values)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     let tmp_path = path.with_extension("tmp");

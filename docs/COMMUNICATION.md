@@ -87,7 +87,7 @@ the existing sync envelope contract:
 - `GET /relay/bundles`: return accepted relay bundles for trusted Android
   clients.
 - `GET /relay/public-key`: optional endpoint for Android to fetch the gateway's
-  encryption public key, if the project later adds gateway-key encryption.
+  configured encryption public key.
 
 The Rust gateway should validate and store only:
 
@@ -123,7 +123,8 @@ gateway contract can remain stable.
     "riskLevel": "Elevated",
     "message": "Cattle movement reported near shared grazing boundary.",
     "verificationStatus": "PendingVerification",
-    "audienceTier": "TrustedVerifier"
+    "audienceTier": "TrustedVerifier",
+    "sensitivity": "Community"
   },
   "encryptedPayload": "base64-encoded-ciphertext",
   "payloadHash": "hex-sha256-of-encrypted-payload",
@@ -135,6 +136,15 @@ gateway contract can remain stable.
 Hashing must use a deterministic representation shared by Android and Rust. If
 relay bundles are implemented, update this document, `ANDROID_INTEGRATION.md`,
 the Android repo, and Rust integration tests together.
+
+The Rust implementation computes `payloadHash` as the SHA-256 hex digest of the
+`encryptedPayload` string bytes. It computes `bundleHash` as the SHA-256 hex
+digest of the public-header fields joined in this order, followed by
+`payloadHash`:
+
+```text
+alertType|generalArea|timeWindow|riskLevel|message|verificationStatus|audienceTier|sensitivity|payloadHash
+```
 
 ## 5. Security And Trust Guardrails
 

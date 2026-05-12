@@ -28,6 +28,14 @@ For durable test storage across restarts:
 JIRANI_STORE_PATH=./data/envelopes.json cargo run
 ```
 
+Relay bundle storage can be enabled separately:
+
+```bash
+JIRANI_STORE_PATH=./data/envelopes.json \
+JIRANI_RELAY_STORE_PATH=./data/relay-bundles.json \
+cargo run
+```
+
 ## Endpoints
 
 - `GET /health`
@@ -38,6 +46,9 @@ JIRANI_STORE_PATH=./data/envelopes.json cargo run
 - `GET /analysis`
 - `POST /sync/envelopes`
 - `GET /sync/envelopes`
+- `POST /relay/bundles`
+- `GET /relay/bundles`
+- `GET /relay/public-key`
 - `GET /analytics/anonymous-summary`
 
 ## Dashboard And Auth
@@ -47,6 +58,7 @@ For local demos, the gateway is open by default. For a hosted test server, set a
 ```bash
 JIRANI_GATEWAY_TOKEN=change-this-demo-token \
 JIRANI_STORE_PATH=./data/envelopes.json \
+JIRANI_RELAY_STORE_PATH=./data/relay-bundles.json \
 cargo run
 ```
 
@@ -71,6 +83,7 @@ What this gateway does by default:
 
 - does not store IP addresses, User-Agent values, device IDs, precise locations, or reporter identities in application storage;
 - persists only minimized accepted envelopes when `JIRANI_STORE_PATH` is set;
+- persists accepted relay bundles when `JIRANI_RELAY_STORE_PATH` is set;
 - verifies `contentHash` before storage;
 - deduplicates without overwriting an existing envelope;
 - rejects survivor-centered, expired, PII-looking, or hash-mismatched uploads.
@@ -104,4 +117,19 @@ See `docs/ANDROID_INTEGRATION.md` for the full API contract shared by both repos
 - Rejects obvious phone-number-like values and exact-home hints.
 - Deduplicates by `envelopeId`; duplicate uploads return `409 Conflict`, which Android treats as already uploaded.
 
-This scaffold uses in-memory storage for the capstone/demo loop. Add persistent storage when the gateway needs to survive restarts.
+## Relay Bundles
+
+The relay API is separate from minimized sync envelopes. It is intended for
+Android's offline mesh relay flow:
+
+- `POST /relay/bundles`: accept a privacy-safe relay bundle.
+- `GET /relay/bundles`: return accepted relay bundles.
+- `GET /relay/public-key`: return `JIRANI_RELAY_PUBLIC_KEY` when configured, or
+  `404 Not Found` when no relay public key is configured.
+
+Relay bundles contain a minimized public header plus an opaque encrypted payload.
+The default gateway validates hashes, expiry, survivor-safety rules, and obvious
+PII in the public header. It does not decrypt the private payload.
+
+This scaffold uses in-memory storage unless `JIRANI_STORE_PATH` and/or
+`JIRANI_RELAY_STORE_PATH` are set for durable demo storage.
