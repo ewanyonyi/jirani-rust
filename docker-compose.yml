@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: jirani-rust-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jirani_gateway
+      POSTGRES_USER: jirani
+      POSTGRES_PASSWORD: jirani_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - jirani_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jirani -d jirani_gateway"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  jirani_postgres_data:
